@@ -197,6 +197,7 @@ static cbsdk::SdkConfig to_cpp_config(const cbsdk_config_t* c_config) {
     if (c_config->client_interface != nullptr) {
         cpp_config.client_interface = c_config->client_interface;
     }
+    cpp_config.shmem_instance = c_config->shmem_instance;
 
     return cpp_config;
 }
@@ -270,6 +271,7 @@ cbsdk_config_t cbsdk_config_default(void) {
     config.custom_device_port = 0;
     config.custom_client_port = 0;
     config.client_interface = nullptr;
+    config.shmem_instance = 0;
     return config;
 }
 

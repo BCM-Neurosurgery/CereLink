@@ -97,6 +97,7 @@ typedef struct {
     uint16_t custom_device_port;
     uint16_t custom_client_port;
     const char* client_interface;
+    uint32_t shmem_instance;
 } cbsdk_config_t;
 
 typedef struct {

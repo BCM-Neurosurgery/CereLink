@@ -631,24 +631,22 @@ SdkSession::~SdkSession() {
     }
 }
 
-// Helper function to map DeviceType to shared memory instance number.
-// Central creates a SINGLE shared memory instance (0) for ALL instruments in a
-// Gemini system. The different instruments (Hub1-3, NSP) share the same buffers
-// and are distinguished by instrument INDEX within the buffers, not by separate
-// shared memory instances. Therefore all device types map to instance 0.
-static int getInstanceNumber(DeviceType /*type*/) {
-    return 0;
-}
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Central-compatible shared memory naming
 // Names match Central's naming convention: base name + optional instance suffix
+//
+// Central itself creates a SINGLE shared memory instance (0) for ALL instruments
+// in one Gemini system -- Hub1-3 and NSP share the same buffers and are
+// distinguished by instrument INDEX within the buffers, not by separate shared
+// memory instances. `instance` here is SdkConfig::shmem_instance: it defaults to
+// 0 (matching that convention, and matching every existing single-device caller's
+// segment names exactly), but lets a caller give two otherwise-unrelated device
+// connections distinct segments so concurrent sessions don't collide.
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Helper function to get Central-compatible shared memory names
 // Returns config buffer name (e.g., "cbCFGbuffer" or "cbCFGbuffer1")
-static std::string getCentralConfigBufferName(DeviceType type) {
-    int instance = getInstanceNumber(type);
+static std::string getCentralConfigBufferName(uint32_t instance) {
     if (instance == 0) {
         return "cbCFGbuffer";
     } else {
@@ -658,8 +656,7 @@ static std::string getCentralConfigBufferName(DeviceType type) {
 
 // Helper function to get Central-compatible transmit buffer name
 // Returns transmit buffer name (e.g., "XmtGlobal" or "XmtGlobal1")
-static std::string getCentralTransmitBufferName(DeviceType type) {
-    int instance = getInstanceNumber(type);
+static std::string getCentralTransmitBufferName(uint32_t instance) {
     if (instance == 0) {
         return "XmtGlobal";
     } else {
@@ -669,8 +666,7 @@ static std::string getCentralTransmitBufferName(DeviceType type) {
 
 // Helper function to get Central-compatible receive buffer name
 // Returns receive buffer name (e.g., "cbRECbuffer" or "cbRECbuffer1")
-static std::string getCentralReceiveBufferName(DeviceType type) {
-    int instance = getInstanceNumber(type);
+static std::string getCentralReceiveBufferName(uint32_t instance) {
     if (instance == 0) {
         return "cbRECbuffer";
     } else {
@@ -680,8 +676,7 @@ static std::string getCentralReceiveBufferName(DeviceType type) {
 
 // Helper function to get Central-compatible local transmit buffer name
 // Returns local transmit buffer name (e.g., "XmtLocal" or "XmtLocal1")
-static std::string getCentralLocalTransmitBufferName(DeviceType type) {
-    int instance = getInstanceNumber(type);
+static std::string getCentralLocalTransmitBufferName(uint32_t instance) {
     if (instance == 0) {
         return "XmtLocal";
     } else {
@@ -691,8 +686,7 @@ static std::string getCentralLocalTransmitBufferName(DeviceType type) {
 
 // Helper function to get Central-compatible status buffer name
 // Returns status buffer name (e.g., "cbSTATUSbuffer" or "cbSTATUSbuffer1")
-static std::string getCentralStatusBufferName(DeviceType type) {
-    int instance = getInstanceNumber(type);
+static std::string getCentralStatusBufferName(uint32_t instance) {
     if (instance == 0) {
         return "cbSTATUSbuffer";
     } else {
@@ -702,8 +696,7 @@ static std::string getCentralStatusBufferName(DeviceType type) {
 
 // Helper function to get Central-compatible spike cache buffer name
 // Returns spike cache buffer name (e.g., "cbSPKbuffer" or "cbSPKbuffer1")
-static std::string getCentralSpikeBufferName(DeviceType type) {
-    int instance = getInstanceNumber(type);
+static std::string getCentralSpikeBufferName(uint32_t instance) {
     if (instance == 0) {
         return "cbSPKbuffer";
     } else {
@@ -713,8 +706,7 @@ static std::string getCentralSpikeBufferName(DeviceType type) {
 
 // Helper function to get Central-compatible signal event name
 // Returns signal event name (e.g., "cbSIGNALevent" or "cbSIGNALevent1")
-static std::string getCentralSignalEventName(DeviceType type) {
-    int instance = getInstanceNumber(type);
+static std::string getCentralSignalEventName(uint32_t instance) {
     if (instance == 0) {
         return "cbSIGNALevent";
     } else {
@@ -724,7 +716,7 @@ static std::string getCentralSignalEventName(DeviceType type) {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Native-mode shared memory naming
-// Names use per-device segments: "cbshm_{device}_{segment}"
+// Names use per-device segments: "cbshm_{device}{instance}_{segment}"
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 static const char* getNativeDeviceName(DeviceType type) {
@@ -739,8 +731,9 @@ static const char* getNativeDeviceName(DeviceType type) {
     }
 }
 
-static std::string getNativeSegmentName(DeviceType type, const std::string& segment) {
-    return std::string("cbshm_") + getNativeDeviceName(type) + "_" + segment;
+static std::string getNativeSegmentName(DeviceType type, uint32_t instance, const std::string& segment) {
+    std::string suffix = (instance == 0) ? "" : std::to_string(instance);
+    return std::string("cbshm_") + getNativeDeviceName(type) + suffix + "_" + segment;
 }
 
 /// @brief Map DeviceType to Central's instrument index (GEMSTART==2 mapping)
@@ -772,13 +765,13 @@ Result<SdkSession> SdkSession::create(const SdkConfig& config) {
 
     // --- Attempt 1: Central-compatible CLIENT mode ---
     // Try to attach to Central's shared memory (Central is running)
-    std::string central_cfg = getCentralConfigBufferName(config.device_type);
-    std::string central_rec = getCentralReceiveBufferName(config.device_type);
-    std::string central_xmt = getCentralTransmitBufferName(config.device_type);
-    std::string central_xmt_local = getCentralLocalTransmitBufferName(config.device_type);
-    std::string central_status = getCentralStatusBufferName(config.device_type);
-    std::string central_spk = getCentralSpikeBufferName(config.device_type);
-    std::string central_signal = getCentralSignalEventName(config.device_type);
+    std::string central_cfg = getCentralConfigBufferName(config.shmem_instance);
+    std::string central_rec = getCentralReceiveBufferName(config.shmem_instance);
+    std::string central_xmt = getCentralTransmitBufferName(config.shmem_instance);
+    std::string central_xmt_local = getCentralLocalTransmitBufferName(config.shmem_instance);
+    std::string central_status = getCentralStatusBufferName(config.shmem_instance);
+    std::string central_spk = getCentralSpikeBufferName(config.shmem_instance);
+    std::string central_signal = getCentralSignalEventName(config.shmem_instance);
 
     auto shmem_result = cbshm::ShmemSession::create(
         central_cfg, central_rec, central_xmt, central_xmt_local,
@@ -795,13 +788,13 @@ Result<SdkSession> SdkSession::create(const SdkConfig& config) {
     if (shmem_result.isError()) {
         // --- Attempt 2: Native CLIENT mode ---
         // Try to attach to an existing CereLink STANDALONE's native segments
-        std::string native_cfg = getNativeSegmentName(config.device_type, "config");
-        std::string native_rec = getNativeSegmentName(config.device_type, "receive");
-        std::string native_xmt = getNativeSegmentName(config.device_type, "xmt_global");
-        std::string native_xmt_local = getNativeSegmentName(config.device_type, "xmt_local");
-        std::string native_status = getNativeSegmentName(config.device_type, "status");
-        std::string native_spk = getNativeSegmentName(config.device_type, "spike");
-        std::string native_signal = getNativeSegmentName(config.device_type, "signal");
+        std::string native_cfg = getNativeSegmentName(config.device_type, config.shmem_instance, "config");
+        std::string native_rec = getNativeSegmentName(config.device_type, config.shmem_instance, "receive");
+        std::string native_xmt = getNativeSegmentName(config.device_type, config.shmem_instance, "xmt_global");
+        std::string native_xmt_local = getNativeSegmentName(config.device_type, config.shmem_instance, "xmt_local");
+        std::string native_status = getNativeSegmentName(config.device_type, config.shmem_instance, "status");
+        std::string native_spk = getNativeSegmentName(config.device_type, config.shmem_instance, "spike");
+        std::string native_signal = getNativeSegmentName(config.device_type, config.shmem_instance, "signal");
 
         shmem_result = cbshm::ShmemSession::create(
             native_cfg, native_rec, native_xmt, native_xmt_local,
@@ -1100,7 +1093,7 @@ Result<void> SdkSession::start() {
                             if (dt == impl->config.device_type)
                                 continue;  // skip self
                             impl->peer_hubs.push_back(
-                                {getNativeSegmentName(dt, "config"),
+                                {getNativeSegmentName(dt, impl->config.shmem_instance, "config"),
                                  std::make_unique<PeerClockReader>()});
                         }
                     }

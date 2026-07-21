@@ -141,6 +141,16 @@ struct SdkConfig {
     /// NICs share a subnet and the device's address alone can't disambiguate
     /// which interface reaches it. Linux-only; ignored elsewhere.
     std::optional<std::string> client_interface;
+
+    /// Shared-memory instance number for this session (default: 0). Sessions
+    /// with the same device_type AND the same shmem_instance share one set of
+    /// shared-memory segments -- this is what lets a multi-hub Gemini system
+    /// (Hub1-3 + NSP) share one buffer set as Central does, and what lets a
+    /// second process attach as CLIENT to an existing STANDALONE session for
+    /// the same device. Give concurrently-open, otherwise-unrelated device
+    /// connections (e.g. two independent LEGACY_NSPs) distinct nonzero values
+    /// so they don't collide and silently attach to each other's memory.
+    uint32_t shmem_instance = 0;
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

@@ -229,6 +229,14 @@ class Session:
             disambiguate which interface reaches it -- e.g. two devices at
             the same default IP on separate point-to-point links. Linux-only;
             ignored on other platforms.
+        shmem_instance: Shared-memory instance number (default: 0). Sessions
+            with the same ``device_type`` AND the same ``shmem_instance``
+            share one set of shared-memory segments and will attach to each
+            other (this is what lets a second process read an existing
+            session's data). Give concurrently-open, otherwise-unrelated
+            device connections -- e.g. two independent ``LEGACY_NSP``
+            devices -- distinct nonzero values so they don't collide and
+            silently attach to each other's memory.
 
     Example::
 
@@ -262,6 +270,14 @@ class Session:
             client_interface="eth1",
         ) as session:
             ...
+
+    To have two concurrently-open, otherwise-unrelated device connections not
+    collide on shared memory (e.g. two independent ``LEGACY_NSP`` devices)::
+
+        s1 = Session(DeviceType.LEGACY_NSP, device_address="192.168.137.128",
+                     client_interface="eth0", shmem_instance=0)
+        s2 = Session(DeviceType.LEGACY_NSP, device_address="192.168.137.128",
+                     client_interface="eth1", shmem_instance=1)
     """
 
     def __init__(
@@ -273,12 +289,14 @@ class Session:
         device_port: int = 0,
         client_port: int = 0,
         client_interface: Optional[str] = None,
+        shmem_instance: int = 0,
     ):
         _lib = _get_lib()
 
         config = _lib.cbsdk_config_default()
         config.device_type = int(_coerce_enum(DeviceType, device_type))
         config.callback_queue_depth = callback_queue_depth
+        config.shmem_instance = shmem_instance
 
         # Keep the encoded bytes alive for the duration of this call only --
         # cbsdk_session_create() copies them into a std::string synchronously
