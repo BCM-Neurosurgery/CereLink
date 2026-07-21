@@ -127,6 +127,12 @@ typedef struct {
     const char* custom_client_address; ///< Override client IP (NULL = auto)
     uint16_t custom_device_port;       ///< Override device port (0 = auto)
     uint16_t custom_client_port;       ///< Override client port (0 = auto)
+
+    // Network interface to bind the socket to (e.g. "eth1"), bypassing normal
+    // destination-based routing (Linux SO_BINDTODEVICE). Use when multiple
+    // NICs share a subnet and the device's address alone can't disambiguate
+    // which interface reaches it. NULL = unused. Linux-only; ignored elsewhere.
+    const char* client_interface;
 } cbsdk_config_t;
 
 /// SDK statistics (C version of SdkStats)

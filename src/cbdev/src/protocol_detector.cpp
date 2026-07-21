@@ -84,6 +84,11 @@ struct DetectionState {
     std::atomic<size_t> bytes_received{0};
     std::atomic<size_t> config_packets_seen{0};
     std::atomic<size_t> procrep_seen{0};
+    // Set when a SYSREPRUNLEV matching the 4.1+/current header layout was seen.
+    // Some legacy firmware speaks that framing but never emits PROCREP in reply
+    // to REQCONFIGALL, so on timeout this lets us fall back to PROTOCOL_CURRENT
+    // instead of failing the connection outright.
+    std::atomic<bool> saw_current_format_sysrep{false};
 };
 
 /// @brief Guess packet size when protocol version is ambiguous
@@ -257,6 +262,7 @@ void receiveThread(DetectionState* state) {
                     // We cannot distinguish between 4.1 and 4.2 based solely on SYSREPRUNLEV
                     // Send a REQCONFIGALL and await the response.
                     state->send_config = true;
+                    state->saw_current_format_sysrep = true;
                 }
                 else if (pkt_header->type == cbPKTTYPE_PROCREP) {
                     ++state->procrep_seen;
@@ -307,7 +313,8 @@ void receiveThread(DetectionState* state) {
 }
 Result<ProtocolVersion> detectProtocol(const char* device_addr, uint16_t send_port,
                                        const char* client_addr, uint16_t recv_port,
-                                       const uint32_t timeout_ms) {
+                                       const uint32_t timeout_ms,
+                                       const char* client_interface) {
 #ifdef _WIN32
     // Initialize Winsock on Windows before using socket APIs
     WSADATA wsaData;
@@ -329,6 +336,26 @@ Result<ProtocolVersion> detectProtocol(const char* device_addr, uint16_t send_po
     int opt_one = 1;
     setsockopt(sock, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<const char*>(&opt_one), sizeof(opt_one));
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&opt_one), sizeof(opt_one));
+
+#if defined(__linux__) && defined(SO_BINDTODEVICE)
+    // Force this socket's traffic out a specific NIC, bypassing normal
+    // destination-based routing. Needed when multiple NICs share the same
+    // subnet, so the device's address alone can't disambiguate which
+    // interface actually reaches it.
+    if (client_interface && strlen(client_interface) > 0) {
+        if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, client_interface,
+                       strlen(client_interface)) != 0) {
+            const std::string err_suffix = lastSocketErrorSuffix();
+            closesocket(sock);
+#ifdef _WIN32
+            WSACleanup();
+#endif
+            return Result<ProtocolVersion>::error(
+                "Failed to bind probe socket to interface " +
+                std::string(client_interface) + err_suffix);
+        }
+    }
+#endif
 
     // Bind to client address/port
     sockaddr_in client_sockaddr = {};
@@ -530,6 +557,14 @@ Result<ProtocolVersion> detectProtocol(const char* device_addr, uint16_t send_po
     WSACleanup();
 #endif
     if (timed_out) {
+        // Some legacy firmware speaks the 4.1+/current header framing (confirmed by
+        // a well-formed SYSREPRUNLEV) but never emits PROCREP in response to
+        // REQCONFIGALL. Rather than fail the whole connection over a reply that will
+        // never come, fall back to PROTOCOL_CURRENT since we've already verified the
+        // wire framing matches it.
+        if (state.saw_current_format_sysrep.load()) {
+            return Result<ProtocolVersion>::ok(ProtocolVersion::PROTOCOL_CURRENT);
+        }
         // Provide debug info on what we observed
         char msg[256];
         snprintf(msg, sizeof(msg), "Timed out: packets=%llu, config=%llu, procrep=%llu, bytes=%llu",

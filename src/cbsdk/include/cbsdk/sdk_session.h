@@ -135,6 +135,12 @@ struct SdkConfig {
     std::optional<std::string> custom_client_address;   ///< Override client IP
     std::optional<uint16_t> custom_device_port;         ///< Override device port
     std::optional<uint16_t> custom_client_port;         ///< Override client port
+
+    /// Network interface to bind the socket to (e.g. "eth1"), bypassing normal
+    /// destination-based routing (Linux SO_BINDTODEVICE). Use when multiple
+    /// NICs share a subnet and the device's address alone can't disambiguate
+    /// which interface reaches it. Linux-only; ignored elsewhere.
+    std::optional<std::string> client_interface;
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

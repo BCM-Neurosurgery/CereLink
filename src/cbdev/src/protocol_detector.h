@@ -30,6 +30,8 @@ namespace cbdev {
 /// @param client_addr Client IP address (for binding)
 /// @param recv_port Client UDP port (for binding)
 /// @param timeout_ms Timeout in milliseconds (default: 500ms)
+/// @param client_interface Network interface to bind the probe socket to
+///        (Linux SO_BINDTODEVICE), or nullptr/empty to use normal routing.
 /// @return Detected protocol version, or error
 ///
 /// @note Creates temporary socket for probing, then closes it
@@ -37,7 +39,8 @@ namespace cbdev {
 ///
 Result<ProtocolVersion> detectProtocol(const char* device_addr, uint16_t send_port,
                                        const char* client_addr, uint16_t recv_port,
-                                       uint32_t timeout_ms = 500);
+                                       uint32_t timeout_ms = 500,
+                                       const char* client_interface = nullptr);
 
 } // namespace cbdev
 

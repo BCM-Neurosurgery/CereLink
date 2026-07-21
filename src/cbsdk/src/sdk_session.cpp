@@ -877,6 +877,9 @@ Result<SdkSession> SdkSession::create(const SdkConfig& config) {
         if (config.custom_client_port.has_value()) {
             dev_config.recv_port = config.custom_client_port.value();
         }
+        if (config.client_interface.has_value()) {
+            dev_config.client_interface = config.client_interface.value();
+        }
 
         dev_config.recv_buffer_size = config.recv_buffer_size;
         dev_config.non_blocking = config.non_blocking;

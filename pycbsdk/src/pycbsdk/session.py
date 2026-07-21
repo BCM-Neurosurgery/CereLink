@@ -214,6 +214,21 @@ class Session:
     Args:
         device_type: Device type (e.g., ``DeviceType.HUB1``).
         callback_queue_depth: Number of packets to buffer (default: 16384).
+        device_address: Override the device's IP address (default: the
+            preset for *device_type*, e.g. ``192.168.137.128`` for
+            ``LEGACY_NSP``). Use this when your device isn't at the default
+            address.
+        client_address: Override the local IP address to bind the receive
+            socket to (default: auto-detected).
+        device_port: Override the port packets are sent to on the device.
+        client_port: Override the local port packets are received on.
+        client_interface: Bind the socket to a specific network interface
+            (e.g. ``"eth1"``), bypassing normal destination-based routing
+            (Linux ``SO_BINDTODEVICE``). Use this when multiple NICs share
+            the same subnet and the device's address alone doesn't
+            disambiguate which interface reaches it -- e.g. two devices at
+            the same default IP on separate point-to-point links. Linux-only;
+            ignored on other platforms.
 
     Example::
 
@@ -232,18 +247,56 @@ class Session:
         with Session(DeviceType.HUB1) as session:
             # session is connected and running
             ...
+
+    To connect to a device at a non-default address::
+
+        with Session(DeviceType.LEGACY_NSP, device_address="192.168.137.3") as session:
+            ...
+
+    To connect to a device that shares its IP with another device on a
+    different NIC::
+
+        with Session(
+            DeviceType.LEGACY_NSP,
+            device_address="192.168.137.128",
+            client_interface="eth1",
+        ) as session:
+            ...
     """
 
     def __init__(
         self,
         device_type: DeviceType = DeviceType.LEGACY_NSP,
         callback_queue_depth: int = 16384,
+        device_address: Optional[str] = None,
+        client_address: Optional[str] = None,
+        device_port: int = 0,
+        client_port: int = 0,
+        client_interface: Optional[str] = None,
     ):
         _lib = _get_lib()
 
         config = _lib.cbsdk_config_default()
         config.device_type = int(_coerce_enum(DeviceType, device_type))
         config.callback_queue_depth = callback_queue_depth
+
+        # Keep the encoded bytes alive for the duration of this call only --
+        # cbsdk_session_create() copies them into a std::string synchronously
+        # before any networking happens, so they don't need to outlive it.
+        c_device_address = (
+            ffi.new("char[]", device_address.encode()) if device_address else ffi.NULL
+        )
+        c_client_address = (
+            ffi.new("char[]", client_address.encode()) if client_address else ffi.NULL
+        )
+        c_client_interface = (
+            ffi.new("char[]", client_interface.encode()) if client_interface else ffi.NULL
+        )
+        config.custom_device_address = c_device_address
+        config.custom_client_address = c_client_address
+        config.custom_device_port = device_port
+        config.custom_client_port = client_port
+        config.client_interface = c_client_interface
 
         session_p = ffi.new("cbsdk_session_t *")
         _check(

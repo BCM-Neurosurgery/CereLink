@@ -194,6 +194,9 @@ static cbsdk::SdkConfig to_cpp_config(const cbsdk_config_t* c_config) {
     if (c_config->custom_client_port != 0) {
         cpp_config.custom_client_port = c_config->custom_client_port;
     }
+    if (c_config->client_interface != nullptr) {
+        cpp_config.client_interface = c_config->client_interface;
+    }
 
     return cpp_config;
 }
@@ -266,6 +269,7 @@ cbsdk_config_t cbsdk_config_default(void) {
     config.custom_client_address = nullptr;
     config.custom_device_port = 0;
     config.custom_client_port = 0;
+    config.client_interface = nullptr;
     return config;
 }
 

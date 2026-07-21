@@ -94,6 +94,13 @@ struct ConnectionParams {
     std::string device_address;     ///< Device IP address (where to send packets)
     std::string client_address;     ///< Client IP address (where to bind receive socket)
 
+    /// Network interface name to bind the socket to (e.g. "eth1"), overriding
+    /// normal destination-based routing (Linux SO_BINDTODEVICE). Use this when
+    /// multiple NICs share the same subnet and the device isn't reachable via
+    /// the interface the routing table would otherwise pick. Empty = unused.
+    /// Linux-only; ignored on other platforms.
+    std::string client_interface;
+
     // Ports
     uint16_t recv_port = cbNET_UDP_PORT_CNT;     ///< Port to receive packets on (client side)
     uint16_t send_port = cbNET_UDP_PORT_BCAST;     ///< Port to send packets to (device side)

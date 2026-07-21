@@ -383,6 +383,20 @@ Result<DeviceSession> DeviceSession::create(const ConnectionParams& config) {
         return Result<DeviceSession>::error("Failed to set SO_REUSEADDR");
     }
 
+#if defined(__linux__) && defined(SO_BINDTODEVICE)
+    // Force this socket's traffic out a specific NIC, bypassing normal
+    // destination-based routing. Needed when multiple NICs share the same
+    // subnet, so the device's address alone can't disambiguate which
+    // interface actually reaches it.
+    if (!config.client_interface.empty()) {
+        if (setsockopt(session.m_impl->socket, SOL_SOCKET, SO_BINDTODEVICE,
+                      config.client_interface.c_str(), config.client_interface.size()) != 0) {
+            return Result<DeviceSession>::error(
+                "Failed to bind socket to interface " + config.client_interface);
+        }
+    }
+#endif
+
     // Set receive buffer size
     if (config.recv_buffer_size > 0) {
         int buffer_size = config.recv_buffer_size;
@@ -404,9 +418,16 @@ Result<DeviceSession> DeviceSession::create(const ConnectionParams& config) {
 #endif
 
         if (buffer_size < config.recv_buffer_size) {
-            return Result<DeviceSession>::error(
-                "Receive buffer size too small (got " + std::to_string(buffer_size) +
-                ", requested " + std::to_string(config.recv_buffer_size) + ")");
+            // The kernel silently caps SO_RCVBUF at net.core.rmem_max (commonly
+            // ~208KB on stock Linux installs unless raised via sysctl). A smaller
+            // buffer just means less slack under bursty traffic, not a fatal
+            // condition, so warn and continue with whatever the OS granted rather
+            // than refusing to connect.
+            fprintf(stderr,
+                    "cbsdk: warning: receive buffer size capped by OS (got %d bytes, "
+                    "requested %d). Raise net.core.rmem_max via sysctl for more headroom "
+                    "under bursty traffic.\n",
+                    buffer_size, config.recv_buffer_size);
         }
     }
 

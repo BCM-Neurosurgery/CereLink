@@ -35,7 +35,8 @@ Result<std::unique_ptr<IDeviceSession>> createDeviceSession(
         auto detect_result = detectProtocol(
             config.device_address.c_str(), config.send_port,
             client_addr.c_str(), config.recv_port,
-            2000  // 2 second timeout
+            2000,  // 2 second timeout
+            config.client_interface.empty() ? nullptr : config.client_interface.c_str()
         );
 
         if (detect_result.isError()) {

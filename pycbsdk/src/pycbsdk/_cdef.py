@@ -96,6 +96,7 @@ typedef struct {
     const char* custom_client_address;
     uint16_t custom_device_port;
     uint16_t custom_client_port;
+    const char* client_interface;
 } cbsdk_config_t;
 
 typedef struct {
